@@ -1,0 +1,97 @@
+package server
+
+import (
+	"bytes"
+	"data-proxy/config"
+	"data-proxy/util"
+	"encoding/json"
+	"fmt"
+	"io"
+	"log/slog"
+	"net/http"
+	"strings"
+)
+
+const (
+	middleRoutingURL = "/api/v1/routing/middle"
+)
+
+type RoutingResponse struct {
+	Code int              `json:"code"`
+	Msg  string           `json:"msg"`
+	Data util.RoutingInfo `json:"data"`
+}
+
+type EndPoint struct {
+	IP        string `json:"ip"`
+	Port      int    `json:"port"`
+	Provider  string `json:"provider"`
+	Continent string `json:"continent"`
+	Country   string `json:"country"`
+	City      string `json:"city"`
+}
+
+type EndPoints struct {
+	Source EndPoint `json:"source"`
+	Dest   EndPoint `json:"dest"`
+}
+
+func GetRoutingFromControlPlane(port int, l *slog.Logger) *util.RoutingInfo {
+
+	if len(config.TestPathMap) > 0 {
+		if path, ok := config.TestPathMap[port]; ok {
+			hops := strings.Split(path, ",")
+			if len(hops) >= 2 && hops[0] == config.Config_.Node.IP.Public {
+				l.Info("Using local test routing", slog.Int("port", port), slog.Any("hops", hops))
+				return &util.RoutingInfo{
+					Routing: []util.PathInfo{
+						{Hops: hops},
+					},
+				}
+			}
+		}
+	}
+
+	req := EndPoints{}
+	req.Source.IP = config.Config_.Node.IP.Public
+	req.Dest.Port = port
+
+	l.Info("Requesting routing information from control plane", slog.Any("req", req))
+
+	reqBody, err := json.Marshal(req)
+	if err != nil {
+		l.Error("Failed to marshal routing request", slog.Any("err", err))
+		return &util.RoutingInfo{}
+	}
+
+	url := fmt.Sprintf("%s?ip=%s", config.Config_.ControlHost+middleRoutingURL, config.Config_.Node.IP.Public)
+	resp, err := http.Post(url, "application/json", bytes.NewBuffer(reqBody))
+	if err != nil {
+		l.Error("Failed to send routing request to control plane", slog.Any("err", err))
+		return &util.RoutingInfo{}
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		l.Error("Failed to read routing response", slog.Any("err", err))
+		return &util.RoutingInfo{}
+	}
+
+	var routingResp RoutingResponse
+	if err = json.Unmarshal(respBody, &routingResp); err != nil {
+		l.Error("Failed to unmarshal routing response", slog.Any("err", err))
+		return &util.RoutingInfo{}
+	}
+
+	if routingResp.Code != 200 {
+		l.Error("Control plane returned error", slog.String("msg", routingResp.Msg))
+		return &util.RoutingInfo{}
+	}
+
+	for i, p := range routingResp.Data.Routing {
+		l.Info("routing path", slog.Int("idx", i), slog.Any("hops", p.Hops), slog.Float64("rtt", p.Rtt))
+	}
+
+	return &routingResp.Data
+}

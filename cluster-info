@@ -1,0 +1,37 @@
+# SkyAccel Cluster Information
+
+# Node 1 - Master Node
+node1:
+  ip: 202.182.96.100
+  provider: Vultr
+  continent: Asia
+  country: JP
+  city: Tokyo
+  role: master
+  server: ""
+  user: root
+  pw: ""
+
+# Node 3 - Slave Node
+node3:
+  ip: 202.182.96.102
+  provider: AWS
+  continent: Asia
+  country: HK
+  city: HongKong
+  role: slave
+  server: 192.168.1.100
+  user: root
+  pw: "123456"
+
+# Node 4 - Slave Node
+node4:
+  ip: 202.182.96.103
+  provider: GoogleCloud
+  continent: Asia
+  country: KR
+  city: Seoul
+  role: slave
+  server: 192.168.1.100
+  user: root
+  pw: "123456"
